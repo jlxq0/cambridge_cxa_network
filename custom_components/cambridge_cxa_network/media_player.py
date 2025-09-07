@@ -354,40 +354,68 @@ class CambridgeCXADevice(MediaPlayerEntity):
             self._state = "unavailable"
             return
             
-        if AMP_REPLY_PWR_ON in self._pwstate:
+        if self._pwstate and AMP_REPLY_PWR_ON in self._pwstate:
             self._state = STATE_ON
-            self._mediasource = await self._command_with_reply(AMP_CMD_GET_CURRENT_SOURCE)
-            self._muted = await self._command_with_reply(AMP_CMD_GET_MUTE_STATE)
+        elif self._pwstate and AMP_REPLY_PWR_STANDBY in self._pwstate:
+            self._state = STATE_OFF
+        else:
+            # If we can't determine power state, try to query other values anyway
+            _LOGGER.warning("Could not determine power state, attempting to query other values")
+            self._state = "unknown"
+        
+        # Try to get values regardless of power state
+        if self._state != "unavailable":
+            # Get source
+            try:
+                self._mediasource = await self._command_with_reply(AMP_CMD_GET_CURRENT_SOURCE)
+            except Exception:
+                _LOGGER.debug("Failed to get current source")
+            
+            # Get mute state
+            try:
+                self._muted = await self._command_with_reply(AMP_CMD_GET_MUTE_STATE)
+            except Exception:
+                _LOGGER.debug("Failed to get mute state")
             
             # Get volume information
-            vol_reply = await self._command_with_reply(AMP_CMD_GET_VOLUME)
-            if vol_reply.startswith(AMP_REPLY_VOLUME):
-                try:
-                    self._volume = int(vol_reply.replace(AMP_REPLY_VOLUME, ""))
-                except ValueError:
-                    pass
+            try:
+                vol_reply = await self._command_with_reply(AMP_CMD_GET_VOLUME)
+                if vol_reply and vol_reply.startswith(AMP_REPLY_VOLUME):
+                    try:
+                        self._volume = int(vol_reply.replace(AMP_REPLY_VOLUME, ""))
+                    except ValueError:
+                        pass
+            except Exception:
+                _LOGGER.debug("Failed to get volume")
             
             # Get max volume (only need to query occasionally)
             if self._max_volume is None:
-                max_vol_reply = await self._command_with_reply(AMP_CMD_GET_MAX_VOLUME)
-                if max_vol_reply.startswith(AMP_REPLY_MAX_VOLUME):
-                    try:
-                        self._max_volume = int(max_vol_reply.replace(AMP_REPLY_MAX_VOLUME, ""))
-                    except ValueError:
-                        self._max_volume = 96  # Default max
+                try:
+                    max_vol_reply = await self._command_with_reply(AMP_CMD_GET_MAX_VOLUME)
+                    if max_vol_reply and max_vol_reply.startswith(AMP_REPLY_MAX_VOLUME):
+                        try:
+                            self._max_volume = int(max_vol_reply.replace(AMP_REPLY_MAX_VOLUME, ""))
+                        except ValueError:
+                            self._max_volume = 96  # Default max
+                except Exception:
+                    self._max_volume = 96  # Default max if query fails
             
             # Get firmware and protocol versions (only need to query occasionally)
             if self._firmware_version is None:
-                fw_reply = await self._command_with_reply(AMP_CMD_GET_FIRMWARE_VERSION)
-                if fw_reply.startswith(AMP_REPLY_FIRMWARE_VERSION):
-                    self._firmware_version = fw_reply.replace(AMP_REPLY_FIRMWARE_VERSION, "")
+                try:
+                    fw_reply = await self._command_with_reply(AMP_CMD_GET_FIRMWARE_VERSION)
+                    if fw_reply and fw_reply.startswith(AMP_REPLY_FIRMWARE_VERSION):
+                        self._firmware_version = fw_reply.replace(AMP_REPLY_FIRMWARE_VERSION, "")
+                except Exception:
+                    _LOGGER.debug("Failed to get firmware version")
             
             if self._protocol_version is None:
-                pv_reply = await self._command_with_reply(AMP_CMD_GET_PROTOCOL_VERSION)
-                if pv_reply.startswith(AMP_REPLY_PROTOCOL_VERSION):
-                    self._protocol_version = pv_reply.replace(AMP_REPLY_PROTOCOL_VERSION, "")
-        else:
-            self._state = STATE_OFF
+                try:
+                    pv_reply = await self._command_with_reply(AMP_CMD_GET_PROTOCOL_VERSION)
+                    if pv_reply and pv_reply.startswith(AMP_REPLY_PROTOCOL_VERSION):
+                        self._protocol_version = pv_reply.replace(AMP_REPLY_PROTOCOL_VERSION, "")
+                except Exception:
+                    _LOGGER.debug("Failed to get protocol version")
 
     async def _command(self, command):
         """Send a command to the amplifier."""
