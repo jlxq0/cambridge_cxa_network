@@ -119,9 +119,30 @@ class CambridgeCXASensor(SensorEntity):
 
     async def async_update(self) -> None:
         """Update the sensor state."""
-        # Get the media player entity
-        media_player_entity_id = f"media_player.{self._entry.data.get('name', 'cambridge_cxa').lower().replace(' ', '_')}"
-        media_player = self._hass.states.get(media_player_entity_id)
+        # Get the media player entity from the same integration
+        media_player = None
+        
+        # Find the media player entity from our device
+        device_registry = self._hass.helpers.device_registry.async_get()
+        entity_registry = self._hass.helpers.entity_registry.async_get()
+        
+        # Get our device
+        device = device_registry.async_get_device(identifiers={(DOMAIN, self._entry.entry_id)})
+        
+        if device:
+            # Find media player entity for this device
+            for entity in entity_registry.entities.values():
+                if entity.device_id == device.id and entity.domain == "media_player":
+                    media_player = self._hass.states.get(entity.entity_id)
+                    break
+        
+        if not media_player:
+            # Fallback - try common entity IDs
+            for entity_id in ["media_player.cambridge_audio_cxa", 
+                              f"media_player.{self._entry.data.get('name', 'cambridge_cxa').lower().replace(' ', '_')}"]:
+                media_player = self._hass.states.get(entity_id)
+                if media_player:
+                    break
         
         if not media_player:
             self._attr_native_value = "Unavailable"
@@ -145,4 +166,5 @@ class CambridgeCXASensor(SensorEntity):
         elif self.entity_description.key == "firmware_version":
             self._attr_native_value = media_player.attributes.get("firmware_version", "Unknown")
         elif self.entity_description.key == "protocol_version":
-            self._attr_native_value = media_player.attributes.get("protocol_version", "Unknown")
+            # We store model name now, not protocol version
+            self._attr_native_value = media_player.attributes.get("model", "Unknown")
