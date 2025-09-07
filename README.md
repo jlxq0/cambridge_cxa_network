@@ -16,18 +16,18 @@ This component allows you to control your Cambridge Audio CXA amplifier through 
 
 ### HACS Installation (Recommended)
 
-1. Add custom repository `lievencoghe/cambridge_cxa` to HACS
+1. Add custom repository `jlxq0/cambridge_cxa_network` to HACS
 2. Install the "Cambridge Audio CXA Network" integration
 3. Restart Home Assistant
 4. Go to Settings → Devices & Services → Add Integration
-5. Search for "Cambridge CXA" and follow the configuration wizard
+5. Search for "Cambridge CXA Network" and follow the configuration wizard
 
 ### Manual Installation
 
-1. Copy the `cambridge_cxa` folder to your `custom_components` directory
+1. Copy the `cambridge_cxa_network` folder to your `custom_components` directory
 2. Restart Home Assistant
 3. Go to Settings → Devices & Services → Add Integration
-4. Search for "Cambridge CXA" and follow the configuration wizard
+4. Search for "Cambridge CXA Network" and follow the configuration wizard
 
 ## Configuration
 
@@ -147,8 +147,8 @@ logger:
 ## Credits
 
 - Original implementation by [@lievencoghe](https://github.com/lievencoghe)
-- Network support added by the community
+- Network support and GUI configuration by [@jlxq0](https://github.com/jlxq0)
 
 ## Support
 
-For issues and feature requests, please use the [GitHub issue tracker](https://github.com/lievencoghe/cambridge_cxa/issues).
+For issues and feature requests, please use the [GitHub issue tracker](https://github.com/jlxq0/cambridge_cxa_network/issues).

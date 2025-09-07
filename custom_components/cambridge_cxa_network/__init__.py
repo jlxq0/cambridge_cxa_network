@@ -1,4 +1,8 @@
-"""The Cambridge CXA integration."""
+"""The Cambridge CXA Network integration.
+
+Original implementation by @lievencoghe
+Network support added by @jlxq0
+"""
 import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant

@@ -1,13 +1,13 @@
 {
-  "domain": "cambridge_cxa",
+  "domain": "cambridge_cxa_network",
   "name": "Cambridge Audio CXA Network",
-  "documentation": "https://github.com/lievencoghe/cambridge_cxa",
-  "issue_tracker": "https://github.com/lievencoghe/cambridge_cxa/issues",
+  "documentation": "https://github.com/jlxq0/cambridge_cxa_network",
+  "issue_tracker": "https://github.com/jlxq0/cambridge_cxa_network/issues",
   "integration_type": "entity",
   "requirements": ["pyserial==3.5"],
   "dependencies": [],
   "codeowners": [
-    "@lievencoghe"
+    "@jlxq0"
   ],
   "config_flow": true,
   "version": "2.0.0",

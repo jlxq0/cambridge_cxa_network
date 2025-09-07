@@ -1,6 +1,6 @@
-"""Constants for Cambridge CXA integration."""
+"""Constants for Cambridge CXA Network integration."""
 
-DOMAIN = "cambridge_cxa"
+DOMAIN = "cambridge_cxa_network"
 DEFAULT_NAME = "Cambridge Audio CXA"
 
 # Network defaults - USR-W610 typically uses port 8899

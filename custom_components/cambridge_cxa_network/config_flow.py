@@ -1,4 +1,8 @@
-"""Config flow for Cambridge CXA integration."""
+"""Config flow for Cambridge CXA Network integration.
+
+Original implementation by @lievencoghe
+Network support added by @jlxq0
+"""
 import socket
 import serial
 import serial.tools.list_ports

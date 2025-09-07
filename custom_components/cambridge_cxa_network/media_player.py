@@ -1,8 +1,11 @@
 """
 Support for controlling a Cambridge Audio CXA amplifier over a serial or network connection.
 
+Original implementation by @lievencoghe
+Network support added by @jlxq0
+
 For more details about this platform, please refer to the documentation at
-https://github.com/lievencoghe/cambridge_audio_cxa
+https://github.com/jlxq0/cambridge_cxa_network
 """
 
 import logging
