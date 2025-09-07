@@ -15,6 +15,10 @@ _LOGGER = logging.getLogger(__name__)
 # We only have media_player platform
 PLATFORMS = [Platform.MEDIA_PLAYER]
 
+async def async_setup(hass: HomeAssistant, config: dict):
+    """Set up the Cambridge CXA Network component."""
+    return True
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Cambridge CXA from a config entry."""
     # Store config where media_player.py can access it
@@ -43,4 +47,4 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload config entry."""
     await async_unload_entry(hass, entry)
-    await async_setup_entry(hass, entry) 
+    await async_setup_entry(hass, entry)

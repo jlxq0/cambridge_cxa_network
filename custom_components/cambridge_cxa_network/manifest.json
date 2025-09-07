@@ -3,7 +3,7 @@
   "name": "Cambridge Audio CXA Network",
   "documentation": "https://github.com/jlxq0/cambridge_cxa_network",
   "issue_tracker": "https://github.com/jlxq0/cambridge_cxa_network/issues",
-  "integration_type": "entity",
+  "integration_type": "device",
   "requirements": ["pyserial==3.5"],
   "dependencies": [],
   "codeowners": [
