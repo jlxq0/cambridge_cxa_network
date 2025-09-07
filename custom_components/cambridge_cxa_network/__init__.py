@@ -13,7 +13,7 @@ from .const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 # Platforms we support
-PLATFORMS = [Platform.MEDIA_PLAYER, Platform.SENSOR, Platform.BUTTON, Platform.NUMBER, Platform.SELECT]
+PLATFORMS = [Platform.MEDIA_PLAYER, Platform.SENSOR, Platform.NUMBER, Platform.SELECT]
 
 async def async_setup(hass: HomeAssistant, config: dict):
     """Set up the Cambridge CXA Network component."""

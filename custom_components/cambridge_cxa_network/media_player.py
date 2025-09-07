@@ -37,26 +37,22 @@ from .const import (
     CONNECTION_SERIAL,
     AMP_CMD_GET_PWSTATE,
     AMP_CMD_GET_CURRENT_SOURCE,
-    AMP_CMD_GET_MUTE_STATE,
     AMP_CMD_SET_MUTE_ON,
     AMP_CMD_SET_MUTE_OFF,
     AMP_CMD_SET_PWR_ON,
     AMP_CMD_SET_PWR_STANDBY,
     AMP_CMD_GET_FIRMWARE_VERSION,
-    AMP_CMD_GET_PROTOCOL_VERSION,
-    AMP_CMD_SELECT_NEXT_SOURCE,
-    AMP_CMD_SELECT_PREV_SOURCE,
-    AMP_CMD_GET_VOLUME,
+    AMP_CMD_GET_MODEL,
+    AMP_CMD_SET_SOURCE,
     AMP_CMD_SET_VOLUME,
-    AMP_CMD_INCREASE_VOLUME,
-    AMP_CMD_DECREASE_VOLUME,
     AMP_REPLY_PWR_ON,
     AMP_REPLY_PWR_STANDBY,
     AMP_REPLY_MUTE_ON,
     AMP_REPLY_MUTE_OFF,
     AMP_REPLY_FIRMWARE_VERSION,
-    AMP_REPLY_PROTOCOL_VERSION,
-    AMP_REPLY_VOLUME,
+    AMP_REPLY_MODEL,
+    AMP_REPLY_SOURCE,
+    AMP_REPLY_VOLUME_SET,
     NORMAL_INPUTS_CXA61,
     NORMAL_INPUTS_CXA81,
     NORMAL_INPUTS_AMP_REPLY_CXA61,
@@ -330,9 +326,10 @@ class CambridgeCXADevice(MediaPlayerEntity):
         self._pwstate = ""
         self._state = STATE_OFF
         self._firmware_version = None
-        self._protocol_version = None
-        self._volume = None
-        self._max_volume = 96  # CXA81 volume range is 0-96
+        self._model_name = None
+        self._volume = 30  # Default volume since we can't query it
+        self._max_volume = 96  # CXA volume range is 0-96
+        self._last_mute_state = None  # Track mute state
         
         # Set up source lists based on amp type
         if self._amp_type == "CXA61":
@@ -369,25 +366,11 @@ class CambridgeCXADevice(MediaPlayerEntity):
             except Exception:
                 _LOGGER.debug("Failed to get current source")
             
-            # Get mute state
-            try:
-                self._muted = await self._command_with_reply(AMP_CMD_GET_MUTE_STATE)
-            except Exception:
-                _LOGGER.debug("Failed to get mute state")
-            
-            # Get volume information
-            try:
-                vol_reply = await self._command_with_reply(AMP_CMD_GET_VOLUME)
-                if vol_reply and vol_reply.startswith(AMP_REPLY_VOLUME):
-                    try:
-                        self._volume = int(vol_reply.replace(AMP_REPLY_VOLUME, ""))
-                    except ValueError:
-                        pass
-            except Exception:
-                _LOGGER.debug("Failed to get volume")
+            # Note: CXA doesn't support mute query, we track it locally
+            # Volume also can't be queried, only set
             
             
-            # Get firmware and protocol versions (only need to query occasionally)
+            # Get firmware and model info (only need to query occasionally)
             if self._firmware_version is None:
                 try:
                     fw_reply = await self._command_with_reply(AMP_CMD_GET_FIRMWARE_VERSION)
@@ -396,13 +379,13 @@ class CambridgeCXADevice(MediaPlayerEntity):
                 except Exception:
                     _LOGGER.debug("Failed to get firmware version")
             
-            if self._protocol_version is None:
+            if self._model_name is None:
                 try:
-                    pv_reply = await self._command_with_reply(AMP_CMD_GET_PROTOCOL_VERSION)
-                    if pv_reply and pv_reply.startswith(AMP_REPLY_PROTOCOL_VERSION):
-                        self._protocol_version = pv_reply.replace(AMP_REPLY_PROTOCOL_VERSION, "")
+                    model_reply = await self._command_with_reply(AMP_CMD_GET_MODEL)
+                    if model_reply and model_reply.startswith(AMP_REPLY_MODEL):
+                        self._model_name = model_reply.replace(AMP_REPLY_MODEL, "")
                 except Exception:
-                    _LOGGER.debug("Failed to get protocol version")
+                    _LOGGER.debug("Failed to get model")
 
     async def _command(self, command):
         """Send a command to the amplifier."""
@@ -439,7 +422,7 @@ class CambridgeCXADevice(MediaPlayerEntity):
     @property
     def is_volume_muted(self):
         """Return mute state."""
-        return AMP_REPLY_MUTE_ON in self._muted
+        return self._last_mute_state if self._last_mute_state is not None else False
     
     @property
     def volume_level(self):
@@ -491,8 +474,8 @@ class CambridgeCXADevice(MediaPlayerEntity):
         attrs = {}
         if self._firmware_version:
             attrs["firmware_version"] = self._firmware_version
-        if self._protocol_version:
-            attrs["protocol_version"] = self._protocol_version
+        if self._model_name:
+            attrs["model"] = self._model_name
         if self._speakersactive:
             attrs["speaker_output"] = self._speakersactive
         if self._volume is not None:
@@ -505,8 +488,10 @@ class CambridgeCXADevice(MediaPlayerEntity):
         """Mute or unmute audio."""
         if mute:
             await self._command(AMP_CMD_SET_MUTE_ON)
+            self._last_mute_state = True
         else:
             await self._command(AMP_CMD_SET_MUTE_OFF)
+            self._last_mute_state = False
 
     async def async_select_sound_mode(self, sound_mode):
         """Select sound mode."""
@@ -531,8 +516,10 @@ class CambridgeCXADevice(MediaPlayerEntity):
             self.url_command("smoip/zone/state?pre_amp_mode=false")
             self.url_command("smoip/zone/volume?zone=1&command=step_up")
         else:
-            # Use amplifier protocol
-            await self._command(AMP_CMD_INCREASE_VOLUME)
+            # CXA doesn't have volume up command, simulate with set
+            if self._volume is not None and self._volume < 96:
+                self._volume = min(self._volume + 1, 96)
+                await self.async_set_volume_level(self._volume / 96.0)
 
     async def async_volume_down(self):
         """Decrease volume by one step."""
@@ -541,25 +528,29 @@ class CambridgeCXADevice(MediaPlayerEntity):
             self.url_command("smoip/zone/state?pre_amp_mode=false")
             self.url_command("smoip/zone/volume?zone=1&command=step_down")
         else:
-            # Use amplifier protocol
-            await self._command(AMP_CMD_DECREASE_VOLUME)
+            # CXA doesn't have volume down command, simulate with set
+            if self._volume is not None and self._volume > 0:
+                self._volume = max(self._volume - 1, 0)
+                await self.async_set_volume_level(self._volume / 96.0)
     
     async def async_set_volume_level(self, volume):
         """Set volume level, range 0..1."""
-        if self._max_volume:
-            # Convert 0..1 to 0..max_volume
-            volume_int = int(volume * self._max_volume)
-            # Format as two-digit string
-            volume_str = f"{volume_int:02d}"
-            await self._command(AMP_CMD_SET_VOLUME + volume_str)
+        # Convert 0..1 to 0..96
+        volume_int = int(volume * 96)
+        self._volume = volume_int
+        # Format as two-digit string
+        volume_str = f"{volume_int:02d}"
+        await self._command(AMP_CMD_SET_VOLUME + volume_str)
     
     async def async_select_next_source(self):
         """Select next input source."""
-        await self._command(AMP_CMD_SELECT_NEXT_SOURCE)
+        # CXA doesn't have next/prev source commands
+        _LOGGER.info("Next source command not supported by CXA")
     
     async def async_select_prev_source(self):
         """Select previous input source."""
-        await self._command(AMP_CMD_SELECT_PREV_SOURCE)
+        # CXA doesn't have next/prev source commands
+        _LOGGER.info("Previous source command not supported by CXA")
 
     async def async_will_remove_from_hass(self):
         """Clean up when entity is removed."""

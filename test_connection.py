@@ -241,6 +241,54 @@ def test_cxa_communication(sock):
         else:
             print(f"  → Mute response: {response}")
 
+def test_alternate_protocols(sock):
+    """Test alternate command formats to find the right query syntax"""
+    print("\n" + "="*50)
+    print("TESTING ALTERNATE PROTOCOL FORMATS")
+    print("="*50)
+
+    # Try different query formats
+    test_commands = [
+        ("#01,01\r", "Get status without trailing comma"),
+        ("#03,01\r", "Get volume without trailing comma"),
+        ("#01\r", "Simple status query"),
+        ("#03\r", "Simple volume query"),
+        ("#01,?\r", "Status query with ?"),
+        ("#03,?\r", "Volume query with ?"),
+        ("#01,01,?\r", "Status with comma and ?"),
+        ("#03,01,?\r", "Volume with comma and ?"),
+        ("#?\r", "Universal query"),
+        ("#01,20\r", "Status with different code"),
+        ("#03,20\r", "Volume with different code"),
+    ]
+
+    print("\nTrying different query formats...")
+    working_formats = []
+
+    for cmd, desc in test_commands:
+        response = send_command(sock, cmd, desc)
+        if response and "#00,03" not in response and response != "":
+            print(f"  ✓ WORKING FORMAT FOUND: {cmd.strip()} -> {response}")
+            working_formats.append((cmd.strip(), response))
+
+    if working_formats:
+        print(f"\n✓ Found {len(working_formats)} working format(s)!")
+    else:
+        print("\n✗ No working query formats found with these tests")
+
+    # Test if volume changes are actually working
+    print("\n" + "="*50)
+    print("TESTING ACTUAL VOLUME CHANGES")
+    print("="*50)
+    print("Listen to your amplifier - volume should change:")
+
+    volumes = [20, 30, 40, 30, 20]
+    for vol in volumes:
+        cmd = f"#03,02,{vol:02d}\r"
+        response = send_command(sock, cmd, f"Set volume to {vol}")
+        print(f"  Volume set to {vol} - Did you hear it change?")
+        time.sleep(1.5)  # Wait between changes
+
 def interactive_test(sock):
     """Interactive command testing"""
     print("\n3. Interactive mode - send custom commands")
@@ -332,6 +380,11 @@ def main():
     try:
         # Test CXA communication
         test_cxa_communication(sock)
+
+        # Test alternate protocols
+        response = input("\nDo you want to test alternate protocol formats? (y/n): ")
+        if response.lower() == 'y':
+            test_alternate_protocols(sock)
 
         # Test volume control
         response = input("\nDo you want to test volume control? (y/n): ")
