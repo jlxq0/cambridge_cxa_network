@@ -1,44 +1,91 @@
 # Home Assistant Custom Component for controlling Cambridge Audio CXA 61/81 amplifiers
 
-For this component to work, you'll need to have a serial connection between your Cambridge CXA amplifier and your Home Assistant instance.
-This can be either a direct serial connection, or you could use a remote device like a Raspberry Pi to provide the serial connection from your CXA to your Home Assistant instance. 
+This component allows you to control your Cambridge Audio CXA amplifier through Home Assistant. It now supports both direct serial connections and network connections via WiFi-to-serial converters like the USR-W610.
 
-In case you have a direct serial connection between your Cambridge CXA and Home Assistant, follow the steps below. If you have a Raspberry Pi in between, scroll down to the next section.
+## Features
 
-## Direct serial connection
+- Power on/off control
+- Input source selection
+- Mute control
+- Speaker output selection (A, AB, B)
+- Volume control (when used with Cambridge CXN)
+- **NEW**: Network connection support via USR-W610 WiFi-to-serial converter
+- **NEW**: GUI-based configuration (no more YAML editing!)
 
-On your Home Assistant, create a directory called `cambridge_cxa` under the `custom_components` directory, and save the files from this repo in there.
-Alternatively, you can install this component using HACS. Add custom repository lievencoghe/cambridge_cxa and install the component.
+## Installation
 
-Then you need to add the following to your `configuration.yaml` file:
+### HACS Installation (Recommended)
 
-```
-media_player:
-  - platform: cambridge_cxa
-    device: /dev/serial/by-id/<insert id of USB to serial device here>
-    name: CXA
-    type: CXA61 or CXA81
-    slave: <Optional value, if you have a CXN, enter its IP address here, so you can control the CXA's volume through the CXN>
-```
+1. Add custom repository `lievencoghe/cambridge_cxa` to HACS
+2. Install the "Cambridge Audio CXA Network" integration
+3. Restart Home Assistant
+4. Go to Settings → Devices & Services → Add Integration
+5. Search for "Cambridge CXA" and follow the configuration wizard
 
-Restart Home Assistant, and see you have a new media_player entity for your CXA.
+### Manual Installation
 
+1. Copy the `cambridge_cxa` folder to your `custom_components` directory
+2. Restart Home Assistant
+3. Go to Settings → Devices & Services → Add Integration
+4. Search for "Cambridge CXA" and follow the configuration wizard
 
-## Indirect serial connection
+## Configuration
 
-You'll need to install ser2net on the Raspberry Pi where you have the serial connection to your Cambridge CXA, so the serial port can be accessed over the network.
+This integration now uses the Home Assistant UI for configuration. When you add the integration, you'll be guided through a setup wizard that will:
 
-Install ser2net: `sudo apt install ser2net`
+1. Ask whether you're using a network or serial connection
+2. Configure the connection details
+3. Test the connection
+4. Select your amplifier model (CXA61 or CXA81)
+5. Optionally configure CXN IP for volume control
 
-If you installed ser2net version 3.x, add this to `/etc/ser2net.conf` file on the Raspberry Pi:
+### Network Connection Setup (USR-W610)
 
+To use this integration with a USR-W610 WiFi-to-serial converter:
+
+#### USR-W610 Configuration
+
+1. Connect to your USR-W610's web interface
+2. Configure the following settings:
+   - **Work Mode**: TCP Server
+   - **TCP Server Port**: 8899 (default)
+   - **Serial Port Settings**:
+     - Baud Rate: 9600
+     - Data Bits: 8
+     - Stop Bits: 1
+     - Parity: None
+   - **WiFi Settings**: Connect to your network
+
+#### Wiring
+
+Connect your USR-W610 to your Cambridge CXA amplifier:
+- USR-W610 TX → CXA RS232 RX (pin 2)
+- USR-W610 RX → CXA RS232 TX (pin 3)
+- USR-W610 GND → CXA RS232 GND (pin 5)
+
+Use a **straight-through** RS232 cable (not a null modem cable).
+
+### Direct Serial Connection Setup
+
+If you have a direct serial connection between your Home Assistant instance and your Cambridge CXA:
+
+1. Connect your USB-to-serial adapter or serial cable
+2. The integration will automatically detect available serial ports
+3. Select the correct port from the dropdown during setup
+
+## Remote Serial Connection (Legacy Method)
+
+If you need to use ser2net/socat for a remote serial connection, you can still follow the original setup instructions below. However, we recommend using the USR-W610 for a simpler network setup.
+
+### ser2net Configuration
+
+For ser2net version 3.x, add to `/etc/ser2net.conf`:
 ```
 5000:raw:600:/dev/serial/by-id/<insert id of USB to serial device here>:9600 8DATABITS NONE 1STOPBIT
 ```
 
-If you installed ser2net version 4.x, add this to `/etc/ser2net.yaml` file on the Raspberry Pi:
-
-```
+For ser2net version 4.x, add to `/etc/ser2net.yaml`:
+```yaml
 connection: &cambridge
     accepter: tcp,5000
     enable: on
@@ -50,144 +97,58 @@ connection: &cambridge
               9600n81,local
 ```
 
-Make sure the ser2net service is enabled and running on your Raspberry Pi. Enter following commands.
-`sudo systemctl enable ser2net`
-`sudo systemctl start ser2net`
+### socat Configuration
 
-Then, on the PC/Raspberry Pi/VM/... where your Home Assistant instance is running, we'll need to connect to the serial on the Raspberry Pi. We will do this using an utility called socat.
-
-Make sure socat is installed by running `sudo apt install socat`
-
-Next, create a file `/etc/default/socat.conf` and add the following:
-
+Create `/etc/default/socat.conf`:
 ```
 OPTIONS="pty,link=/dev/ttyCXA,raw,ignoreeof,echo=0 tcp:<IP address of the Raspberry Pi>:5000"
 ```
 
-Change the IP address to the IP address of your Raspberry Pi. Leave port to 5000, unless you changed it in the `/etc/ser2net.yaml` file.
-Notice the name of the device `/dev/ttyCXA`. You'll need this later on!
+Then set up the systemd service as described in the original documentation.
 
-Then you'll need to create a systemd service. Create a file `/etc/init.d/socat` and add this:
+## Usage
 
-```
-#! /bin/sh
-### BEGIN INIT INFO
-# Provides:          socat
-# Required-Start:    $local_fs $time $network $named
-# Required-Stop:     $local_fs $time $network $named
-# Default-Start:     2 3 4 5
-# Default-Stop:      0 1 6
-# Short-Description: Start/stop (socat a multipurpose relay)
-#
-# Description: The socat init script will start/stop socat as specified in /etc/default/socat
-#              Then log (FATAL,ERROR,WARN,INFO and Notic) in /var/log/socat.log
-### END INIT INFO
+Once configured, your Cambridge CXA will appear as a media player entity in Home Assistant. You can:
 
-NAME=socat
-DAEMON=/usr/bin/socat
-SOCAT_DEFAULTS='-d -d -d -lf /var/log/socat.log'
+- Turn it on/off
+- Select input sources
+- Mute/unmute
+- Select speaker outputs (A, AB, or B)
+- Control volume (if CXN IP is configured)
 
-. /lib/lsb/init-functions
-. /etc/default/socat.conf
+## Troubleshooting
 
-PATH=/bin:/usr/bin:/sbin:/usr/sbin
+### Connection Issues
 
-[ -x $DAEMON ] || exit 0
+- **Network**: Ensure your USR-W610 is on the same network and the IP/port are correct
+- **Serial**: Check that the serial port permissions are correct and no other process is using it
 
-start_socat() {
-        start-stop-daemon --oknodo --quiet --start \
-                --pidfile /var/run/socat.pid \
-                --background --make-pidfile \
-                --exec $DAEMON -- $SOCAT_DEFAULTS $OPTIONS < /dev/null
-}
+### No Response
 
-stop_socat() {
-        start-stop-daemon --oknodo --stop --quiet --pidfile /var/run/socat.pid --exec $DAEMON
-        rm -f /var/run/socat.pid
-}
+- Verify your RS232 cable is straight-through (not null modem)
+- Check TX/RX connections are not reversed
+- Ensure the amplifier is powered on
 
-start () {
-        start_socat
-        return $?
-}
+### Enable Debug Logging
 
-stop () {
-        for PIDFILE in `ls /var/run/socat.pid 2> /dev/null`; do
-                NAME=`echo $PIDFILE | cut -c16-`
-                NAME=${NAME%%.pid}
-                stop_socat
-        done
-}
-
-case "$1" in
-    start)
-            log_daemon_msg "Starting multipurpose relay" "socat"
-            if start ; then
-                    log_end_msg $?
-            else
-                    log_end_msg $?
-            fi
-            ;;
-    stop)
-            log_daemon_msg "Stopping multipurpose relay" "socat"
-            if stop ; then
-                   log_end_msg $?
-           else
-                   log_end_msg $?
-           fi
-           ;;
-    restart)
-            log_daemon_msg "Restarting multipurpose relay" "socat"
-            stop
-            if start ; then
-                    log_end_msg $?
-            else
-                    log_end_msg $?
-            fi
-            ;;
-    reload|force-reload)
-            log_daemon_msg "Reloading multipurpose relay" "socat"
-            stop
-            if start ; then
-                    log_end_msg $?
-            else
-                    log_end_msg $?
-            fi
-            ;;
-    status)
-            status_of_proc -p /var/run/socat.pid /usr/bin/socat socat && exit 0 || exit $?
-            ;;
-    *)
-        echo "Usage: /etc/init.d/$NAME {start|stop|restart|reload|force-reload|status}"
-        exit 3
-        ;;
-esac
-
-exit 0
+Add to your `configuration.yaml`:
+```yaml
+logger:
+  default: info
+  logs:
+    custom_components.cambridge_cxa: debug
 ```
 
-Then enable and start the service:
-`sudo systemctl enable socat`
-`sudo systemctl start socat`
+## Version History
 
-On your Home Assistant, create a directory called `cambridge_cxa` under the `custom_components` directory, and save the files from this repo in there.
+- **v2.0.0**: Added network support via USR-W610, GUI configuration, async implementation
+- **v0.5**: Original serial-only implementation
 
-Then, add the following to your configuration.yaml file:
+## Credits
 
-```
-media_player:
-  - platform: cambridge_cxa
-    device: /dev/ttyCXA
-    name: CXA
-    type: CXA61 or CXA81
-    slave: <Optional value, if you have a CXN, enter its IP address here, so you can control the CXA's volume through the CXN>
-```
+- Original implementation by [@lievencoghe](https://github.com/lievencoghe)
+- Network support added by the community
 
-Restart Home Assistant, and see you have a new media_player entity for your CXA.
+## Support
 
-Note: When running Home Assistant in Docker, you need to forward the serial port /dev/ttyCXA to your container as a volume, not a device! So add `-v /dev/ttyCXA:/dev/ttyCXA` to your docker command, or add this to your docker-compose file:
-```
-volumes:
-  - /dev/ttyCXA:/dev/ttyCXA
-```
-
+For issues and feature requests, please use the [GitHub issue tracker](https://github.com/lievencoghe/cambridge_cxa/issues).

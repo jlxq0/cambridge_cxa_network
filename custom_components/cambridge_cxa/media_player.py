@@ -1,5 +1,5 @@
 """
-Support for controlling a Cambridge Audio CXA amplifier over a serial connection.
+Support for controlling a Cambridge Audio CXA amplifier over a serial or network connection.
 
 For more details about this platform, please refer to the documentation at
 https://github.com/lievencoghe/cambridge_audio_cxa
@@ -7,51 +7,53 @@ https://github.com/lievencoghe/cambridge_audio_cxa
 
 import logging
 import urllib.request
-import voluptuous as vol
-from serial import Serial
+import socket
+import serial
+import asyncio
+from typing import Optional, Any
 
 from homeassistant.components.media_player import (
-    PLATFORM_SCHEMA,
     MediaPlayerEntity,
-    MediaPlayerEntityFeature
+    MediaPlayerEntityFeature,
+    MediaPlayerState,
+)
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.const import CONF_NAME, STATE_OFF, STATE_ON
+
+from .const import (
+    DOMAIN,
+    CONF_CONNECTION_TYPE,
+    CONF_TCP_HOST,
+    CONF_TCP_PORT,
+    CONF_SERIAL_PORT,
+    CONF_AMP_TYPE,
+    CONF_CXN_IP,
+    CONNECTION_TCP,
+    CONNECTION_SERIAL,
+    AMP_CMD_GET_PWSTATE,
+    AMP_CMD_GET_CURRENT_SOURCE,
+    AMP_CMD_GET_MUTE_STATE,
+    AMP_CMD_SET_MUTE_ON,
+    AMP_CMD_SET_MUTE_OFF,
+    AMP_CMD_SET_PWR_ON,
+    AMP_CMD_SET_PWR_OFF,
+    AMP_REPLY_PWR_ON,
+    AMP_REPLY_PWR_STANDBY,
+    AMP_REPLY_MUTE_ON,
+    AMP_REPLY_MUTE_OFF,
+    NORMAL_INPUTS_CXA61,
+    NORMAL_INPUTS_CXA81,
+    NORMAL_INPUTS_AMP_REPLY_CXA61,
+    NORMAL_INPUTS_AMP_REPLY_CXA81,
+    SOUND_MODES,
+    DEFAULT_TIMEOUT,
 )
 
-from homeassistant.const import (
-    CONF_DEVICE,
-    CONF_NAME,
-    CONF_SLAVE,
-    CONF_TYPE,
-    STATE_OFF,
-    STATE_ON,
-)
-
-import homeassistant.helpers.config_validation as cv
-
-import homeassistant.loader as loader
-
-__version__ = "0.5"
+__version__ = "2.0.0"
 
 _LOGGER = logging.getLogger(__name__)
-
-
-"""
-SUPPORT_CXA = (
-    SUPPORT_SELECT_SOURCE
-    | SUPPORT_SELECT_SOUND_MODE
-    | SUPPORT_TURN_OFF
-    | SUPPORT_TURN_ON
-    | SUPPORT_VOLUME_MUTE
-)
-
-SUPPORT_CXA_WITH_CXN = (
-    SUPPORT_SELECT_SOURCE
-    | SUPPORT_SELECT_SOUND_MODE
-    | SUPPORT_TURN_OFF
-    | SUPPORT_TURN_ON
-    | SUPPORT_VOLUME_MUTE
-    | SUPPORT_VOLUME_STEP
-)
-"""
 
 SUPPORT_CXA = (
     MediaPlayerEntityFeature.SELECT_SOURCE
@@ -70,208 +72,370 @@ SUPPORT_CXA_WITH_CXN = (
     | MediaPlayerEntityFeature.VOLUME_STEP
 )
 
-DEFAULT_NAME = "Cambridge Audio CXA"
 DEVICE_CLASS = "receiver"
 
-PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
-    {
-        vol.Required(CONF_DEVICE): cv.string,
-        vol.Required(CONF_TYPE): cv.string,      
-        vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
-        vol.Optional(CONF_SLAVE): cv.string,
-    }
-)
 
-NORMAL_INPUTS_CXA61 = {
-    "A1" : "#03,04,00",
-    "A2" : "#03,04,01",
-    "A3" : "#03,04,02",
-    "A4" : "#03,04,03",
-    "D1" : "#03,04,04",
-    "D2" : "#03,04,05",
-    "D3" : "#03,04,06",
-    "Bluetooth" : "#03,04,14",
-    "USB" : "#03,04,16",
-    "MP3" : "#03,04,10"
-}
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up Cambridge CXA from a config entry."""
+    # Get config from storage
+    config = hass.data[DOMAIN][entry.entry_id]
 
-NORMAL_INPUTS_CXA81 = {
-    "A1" : "#03,04,00",
-    "A2" : "#03,04,01",
-    "A3" : "#03,04,02",
-    "A4" : "#03,04,03",
-    "D1" : "#03,04,04",
-    "D2" : "#03,04,05",
-    "D3" : "#03,04,06",
-    "Bluetooth" : "#03,04,14",
-    "USB" : "#03,04,16",
-    "XLR" : "#03,04,20"
-}
+    # Create appropriate connection based on config
+    if config[CONF_CONNECTION_TYPE] == CONNECTION_TCP:
+        # Network connection via USR-W610
+        connection = TCPSerialConnection(
+            config[CONF_TCP_HOST],
+            config[CONF_TCP_PORT]
+        )
+    else:
+        # Direct serial connection
+        connection = SerialConnection(config[CONF_SERIAL_PORT])
 
-NORMAL_INPUTS_AMP_REPLY_CXA61 = {
-    "#04,01,00" : "A1",
-    "#04,01,01" : "A2",
-    "#04,01,02" : "A3",
-    "#04,01,03" : "A4",
-    "#04,01,04" : "D1",
-    "#04,01,05" : "D2",
-    "#04,01,06" : "D3",
-    "#04,01,14" : "Bluetooth",
-    "#04,01,16" : "USB",
-    "#04,01,10" : "MP3"
-}
+    # Create and add the media player entity
+    async_add_entities([
+        CambridgeCXADevice(
+            hass,
+            config[CONF_NAME],
+            connection,
+            config[CONF_AMP_TYPE],
+            config.get(CONF_CXN_IP),
+            entry.entry_id
+        )
+    ], True)
 
-NORMAL_INPUTS_AMP_REPLY_CXA81 = {
-    "#04,01,00" : "A1",
-    "#04,01,01" : "A2",
-    "#04,01,02" : "A3",
-    "#04,01,03" : "A4",
-    "#04,01,04" : "D1",
-    "#04,01,05" : "D2",
-    "#04,01,06" : "D3",
-    "#04,01,14" : "Bluetooth",
-    "#04,01,16" : "USB",
-    "#04,01,20" : "XLR"
-}
 
-SOUND_MODES = {
-    "A" : "#1,25,0",
-    "AB" : "#1,25,1",
-    "B" : "#1,25,2"
-}
+class TCPSerialConnection:
+    """TCP connection wrapper that mimics serial interface."""
 
-AMP_CMD_GET_PWSTATE = "#01,01"
-AMP_CMD_GET_CURRENT_SOURCE = "#03,01"
-AMP_CMD_GET_MUTE_STATE = "#01,03"
+    def __init__(self, host: str, port: int):
+        """Initialize TCP connection parameters."""
+        self.host = host
+        self.port = port
+        self.timeout = DEFAULT_TIMEOUT
+        self.socket = None
+        self._lock = asyncio.Lock()
 
-AMP_CMD_SET_MUTE_ON = "#01,04,1"
-AMP_CMD_SET_MUTE_OFF = "#01,04,0"
-AMP_CMD_SET_PWR_ON = "#01,02,1"
-AMP_CMD_SET_PWR_OFF = "#01,02,0"
+    async def connect(self):
+        """Establish TCP connection to USR-W610."""
+        try:
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.socket.settimeout(self.timeout)
+            await asyncio.get_event_loop().run_in_executor(
+                None, self.socket.connect, (self.host, self.port)
+            )
+            _LOGGER.info(f"Connected to CXA via TCP at {self.host}:{self.port}")
+        except Exception as e:
+            _LOGGER.error(f"Failed to connect to {self.host}:{self.port}: {e}")
+            self.socket = None
 
-AMP_REPLY_PWR_ON = "#02,01,1"
-AMP_REPLY_PWR_STANDBY = "#02,01,0"
-AMP_REPLY_MUTE_ON = "#02,03,1"
-AMP_REPLY_MUTE_OFF = "#02,03,0"
+    async def ensure_connected(self):
+        """Ensure we have an active connection."""
+        if not self.socket:
+            await self.connect()
 
-def setup_platform(hass, config, add_devices, discovery_info=None):
-    device = config.get(CONF_DEVICE)
-    name = config.get(CONF_NAME)
-    cxatype = config.get(CONF_TYPE)
-    cxnhost = config.get(CONF_SLAVE)
+    async def write(self, data: str):
+        """Write data to TCP socket."""
+        async with self._lock:
+            await self.ensure_connected()
+            if not self.socket:
+                return
 
-    if device is None:
-        _LOGGER.error("No serial port defined in configuration.yaml for Cambridge CXA")
-        return
+            try:
+                await asyncio.get_event_loop().run_in_executor(
+                    None, self.socket.send, data.encode('utf-8')
+                )
+                _LOGGER.debug(f"Sent: {data.strip()}")
+            except Exception as e:
+                _LOGGER.error(f"Write failed: {e}")
+                self.socket = None
 
-    if cxatype is None:
-        _LOGGER.error("No CXA type found in configuration.yaml file. Possible values are CXA61, CXA81")
-        return
+    async def read_line(self) -> str:
+        """Read a line from TCP socket."""
+        if not self.socket:
+            return ""
 
-    add_devices([CambridgeCXADevice(hass, device, name, cxatype, cxnhost)])
+        try:
+            # Set socket to non-blocking mode for async operation
+            self.socket.setblocking(False)
+            line = b''
+            
+            while True:
+                try:
+                    char = await asyncio.get_event_loop().sock_recv(self.socket, 1)
+                    if not char:
+                        break
+                    if char == b'\r' or char == b'\n':
+                        if line:  # Only break if we have data
+                            break
+                    else:
+                        line += char
+                except socket.error:
+                    await asyncio.sleep(0.01)
+                    continue
+                    
+            result = line.decode('utf-8', errors='ignore')
+            if result:
+                _LOGGER.debug(f"Received: {result}")
+            return result
+        except Exception as e:
+            _LOGGER.error(f"Read failed: {e}")
+            self.socket = None
+            return ""
+
+    def flush(self):
+        """Flush the connection buffer."""
+        if self.socket:
+            self.socket.setblocking(False)
+            try:
+                while self.socket.recv(1024):
+                    pass
+            except:
+                pass
+            self.socket.setblocking(True)
+
+    async def close(self):
+        """Close TCP connection."""
+        if self.socket:
+            self.socket.close()
+            self.socket = None
+            _LOGGER.info("TCP connection closed")
+
+
+class SerialConnection:
+    """Serial connection wrapper for direct USB/RS232."""
+
+    def __init__(self, device: str):
+        """Initialize serial connection parameters."""
+        self.device = device
+        self.serial = None
+        self._lock = asyncio.Lock()
+
+    async def connect(self):
+        """Open serial port with Cambridge parameters."""
+        try:
+            self.serial = await asyncio.get_event_loop().run_in_executor(
+                None,
+                serial.Serial,
+                self.device,
+                9600,
+                serial.EIGHTBITS,
+                serial.PARITY_NONE,
+                serial.STOPBITS_ONE,
+                DEFAULT_TIMEOUT
+            )
+            _LOGGER.info(f"Connected to CXA on {self.device}")
+        except Exception as e:
+            _LOGGER.error(f"Failed to open serial port {self.device}: {e}")
+            self.serial = None
+
+    async def ensure_connected(self):
+        """Ensure serial port is open."""
+        if not self.serial or not self.serial.is_open:
+            await self.connect()
+
+    async def write(self, data: str):
+        """Write data to serial port."""
+        async with self._lock:
+            await self.ensure_connected()
+            if not self.serial:
+                return
+
+            try:
+                await asyncio.get_event_loop().run_in_executor(
+                    None, self.serial.write, data.encode('utf-8')
+                )
+                _LOGGER.debug(f"Serial sent: {data.strip()}")
+            except Exception as e:
+                _LOGGER.error(f"Serial write failed: {e}")
+                self.serial = None
+
+    async def read_line(self) -> str:
+        """Read a line from serial port."""
+        if not self.serial:
+            return ""
+
+        try:
+            line = await asyncio.get_event_loop().run_in_executor(
+                None, self.serial.readline
+            )
+            result = line.decode('utf-8', errors='ignore').strip()
+            if result:
+                _LOGGER.debug(f"Serial received: {result}")
+            return result
+        except Exception as e:
+            _LOGGER.error(f"Serial read failed: {e}")
+            return ""
+
+    def flush(self):
+        """Flush serial input buffer."""
+        if self.serial:
+            self.serial.flush()
+
+    async def close(self):
+        """Close serial port."""
+        if self.serial:
+            self.serial.close()
+            self.serial = None
 
 
 class CambridgeCXADevice(MediaPlayerEntity):
-    def __init__(self, hass, device, name, cxatype, cxnhost):
+    """Representation of a Cambridge CXA amplifier."""
+
+    def __init__(
+        self,
+        hass,
+        name: str,
+        connection: Any,
+        amp_type: str,
+        cxn_ip: Optional[str],
+        entry_id: str
+    ):
+        """Initialize the Cambridge CXA entity."""
         _LOGGER.debug("Setting up Cambridge CXA")
         self._hass = hass
-        self._device = device
+        self._name = name
+        self._connection = connection
+        self._amp_type = amp_type.upper()
+        self._cxn_ip = cxn_ip
+        self._entry_id = entry_id
+        
+        # State variables
         self._mediasource = "#04,01,00"
         self._speakersactive = ""
         self._muted = AMP_REPLY_MUTE_OFF
-        self._name = name
         self._pwstate = ""
-        self._cxatype = cxatype.upper()
-        if self._cxatype == "CXA61":
+        self._state = STATE_OFF
+        
+        # Set up source lists based on amp type
+        if self._amp_type == "CXA61":
             self._source_list = NORMAL_INPUTS_CXA61.copy()
             self._source_reply_list = NORMAL_INPUTS_AMP_REPLY_CXA61.copy()
         else:
             self._source_list = NORMAL_INPUTS_CXA81.copy()
             self._source_reply_list = NORMAL_INPUTS_AMP_REPLY_CXA81.copy()
         self._sound_mode_list = SOUND_MODES.copy()
-        self._state = STATE_OFF
-        self._cxnhost = cxnhost
-        self._serial = Serial(device, baudrate=9600, timeout=2, bytesize=8, parity="N", stopbits=1)
         
-    def update(self):
-        self._pwstate = self._command_with_reply(AMP_CMD_GET_PWSTATE)
-        self._mediasource = self._command_with_reply(AMP_CMD_GET_CURRENT_SOURCE)
-        self._muted = self._command_with_reply(AMP_CMD_GET_MUTE_STATE)
+    async def async_update(self):
+        """Update device state."""
+        self._pwstate = await self._command_with_reply(AMP_CMD_GET_PWSTATE)
+        if AMP_REPLY_PWR_ON in self._pwstate:
+            self._state = STATE_ON
+            self._mediasource = await self._command_with_reply(AMP_CMD_GET_CURRENT_SOURCE)
+            self._muted = await self._command_with_reply(AMP_CMD_GET_MUTE_STATE)
+        else:
+            self._state = STATE_OFF
 
-    def _command(self, command):
+    async def _command(self, command):
+        """Send a command to the amplifier."""
         try:
-            self._serial.flush()
-            self._serial.write((command+"\r").encode("utf-8"))
-            self._serial.flush()
+            self._connection.flush()
+            await self._connection.write(command + "\r")
+            self._connection.flush()
         except:
             _LOGGER.error("Could not send command")
     
-    def _command_with_reply(self, command):
+    async def _command_with_reply(self, command):
+        """Send a command and wait for reply."""
         try:
-            self._serial.write((command+"\r").encode("utf-8"))
-            reply = self._serial.readline()
-            return(reply.decode("utf-8")).replace("\r","")
+            await self._connection.write(command + "\r")
+            reply = await self._connection.read_line()
+            return reply
         except:
             _LOGGER.error("Could not send command")
             return ""
 
     def url_command(self, command):
-        urllib.request.urlopen("http://" + self._cxnhost + "/" + command).read()
+        """Send command to CXN via HTTP."""
+        if self._cxn_ip:
+            try:
+                urllib.request.urlopen("http://" + self._cxn_ip + "/" + command).read()
+            except:
+                _LOGGER.error("Failed to send command to CXN")
+
+    @property
+    def unique_id(self):
+        """Return unique ID for this entity."""
+        return self._entry_id
 
     @property
     def is_volume_muted(self):
-        if AMP_REPLY_MUTE_ON in self._muted:
-            return True
-        else:
-            return False
+        """Return mute state."""
+        return AMP_REPLY_MUTE_ON in self._muted
 
     @property
     def name(self):
+        """Return the name of the device."""
         return self._name
 
     @property
     def source(self):
-        return self._source_reply_list[self._mediasource]
+        """Return current input source."""
+        return self._source_reply_list.get(self._mediasource, "Unknown")
+
+    @property
+    def sound_mode(self):
+        """Return current sound mode."""
+        return self._speakersactive
 
     @property
     def sound_mode_list(self):
+        """Return list of available sound modes."""
         return sorted(list(self._sound_mode_list.keys()))
 
     @property
     def source_list(self):
+        """Return list of available sources."""
         return sorted(list(self._source_list.keys()))
 
     @property
     def state(self):
-        if AMP_REPLY_PWR_ON in self._pwstate:
-            return STATE_ON
-        else:
-            return STATE_OFF
+        """Return the state of the device."""
+        return self._state
 
     @property
     def supported_features(self):
-        if self._cxnhost:
+        """Return features this device supports."""
+        if self._cxn_ip:
             return SUPPORT_CXA_WITH_CXN
         return SUPPORT_CXA
 
-    def mute_volume(self, mute):
+    async def async_mute_volume(self, mute):
+        """Mute or unmute audio."""
         if mute:
-            self._command(AMP_CMD_SET_MUTE_ON)
+            await self._command(AMP_CMD_SET_MUTE_ON)
         else:
-            self._command(AMP_CMD_SET_MUTE_OFF)
+            await self._command(AMP_CMD_SET_MUTE_OFF)
 
-    def select_sound_mode(self, sound_mode):
-        self._command(self._sound_mode_list[sound_mode])
+    async def async_select_sound_mode(self, sound_mode):
+        """Select sound mode."""
+        await self._command(self._sound_mode_list[sound_mode])
 
-    def select_source(self, source):
-        self._command(self._source_list[source])
+    async def async_select_source(self, source):
+        """Select input source."""
+        await self._command(self._source_list[source])
 
-    def turn_on(self):
-        self._command(AMP_CMD_SET_PWR_ON)
+    async def async_turn_on(self):
+        """Turn the amplifier on."""
+        await self._command(AMP_CMD_SET_PWR_ON)
 
-    def turn_off(self):
-        self._command(AMP_CMD_SET_PWR_OFF)
+    async def async_turn_off(self):
+        """Turn the amplifier off."""
+        await self._command(AMP_CMD_SET_PWR_OFF)
 
-    def volume_up(self):
+    async def async_volume_up(self):
+        """Increase volume by one step."""
         self.url_command("smoip/zone/state?pre_amp_mode=false")
-        self
+        self.url_command("smoip/zone/volume?zone=1&command=step_up")
+
+    async def async_volume_down(self):
+        """Decrease volume by one step."""
+        self.url_command("smoip/zone/state?pre_amp_mode=false")
+        self.url_command("smoip/zone/volume?zone=1&command=step_down")
+
+    async def async_will_remove_from_hass(self):
+        """Clean up when entity is removed."""
+        await self._connection.close()
