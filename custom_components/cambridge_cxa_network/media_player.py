@@ -347,7 +347,13 @@ class CambridgeCXADevice(MediaPlayerEntity):
         
     async def async_update(self):
         """Update device state."""
-        self._pwstate = await self._command_with_reply(AMP_CMD_GET_PWSTATE)
+        try:
+            self._pwstate = await self._command_with_reply(AMP_CMD_GET_PWSTATE)
+        except Exception as e:
+            _LOGGER.error(f"Failed to update device state: {e}")
+            self._state = "unavailable"
+            return
+            
         if AMP_REPLY_PWR_ON in self._pwstate:
             self._state = STATE_ON
             self._mediasource = await self._command_with_reply(AMP_CMD_GET_CURRENT_SOURCE)

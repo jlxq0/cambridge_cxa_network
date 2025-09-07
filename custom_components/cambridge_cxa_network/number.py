@@ -37,10 +37,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Cambridge CXA number entities."""
-    # Only create volume control if CXN is configured
-    if not entry.data.get("cxn_ip"):
-        _LOGGER.info("No CXN IP configured, skipping volume control")
-        return
+    # Volume control now works with amplifier protocol, no CXN required
     
     entities = []
     
