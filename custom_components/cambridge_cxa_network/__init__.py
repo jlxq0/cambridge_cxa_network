@@ -12,8 +12,8 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-# We only have media_player platform
-PLATFORMS = [Platform.MEDIA_PLAYER]
+# Platforms we support
+PLATFORMS = [Platform.MEDIA_PLAYER, Platform.SENSOR, Platform.BUTTON, Platform.NUMBER, Platform.SELECT]
 
 async def async_setup(hass: HomeAssistant, config: dict):
     """Set up the Cambridge CXA Network component."""

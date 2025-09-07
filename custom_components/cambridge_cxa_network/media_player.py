@@ -41,11 +41,24 @@ from .const import (
     AMP_CMD_SET_MUTE_ON,
     AMP_CMD_SET_MUTE_OFF,
     AMP_CMD_SET_PWR_ON,
-    AMP_CMD_SET_PWR_OFF,
+    AMP_CMD_SET_PWR_STANDBY,
+    AMP_CMD_GET_FIRMWARE_VERSION,
+    AMP_CMD_GET_PROTOCOL_VERSION,
+    AMP_CMD_SELECT_NEXT_SOURCE,
+    AMP_CMD_SELECT_PREV_SOURCE,
+    AMP_CMD_GET_VOLUME,
+    AMP_CMD_INCREASE_VOLUME,
+    AMP_CMD_DECREASE_VOLUME,
+    AMP_CMD_SET_VOLUME,
+    AMP_CMD_GET_MAX_VOLUME,
     AMP_REPLY_PWR_ON,
     AMP_REPLY_PWR_STANDBY,
     AMP_REPLY_MUTE_ON,
     AMP_REPLY_MUTE_OFF,
+    AMP_REPLY_FIRMWARE_VERSION,
+    AMP_REPLY_PROTOCOL_VERSION,
+    AMP_REPLY_VOLUME,
+    AMP_REPLY_MAX_VOLUME,
     NORMAL_INPUTS_CXA61,
     NORMAL_INPUTS_CXA81,
     NORMAL_INPUTS_AMP_REPLY_CXA61,
@@ -58,12 +71,17 @@ __version__ = "2.0.0"
 
 _LOGGER = logging.getLogger(__name__)
 
+# Update interval for sensors (1 minute)
+SCAN_INTERVAL = 60
+
 SUPPORT_CXA = (
     MediaPlayerEntityFeature.SELECT_SOURCE
     | MediaPlayerEntityFeature.SELECT_SOUND_MODE
     | MediaPlayerEntityFeature.TURN_OFF
     | MediaPlayerEntityFeature.TURN_ON
     | MediaPlayerEntityFeature.VOLUME_MUTE
+    | MediaPlayerEntityFeature.VOLUME_SET
+    | MediaPlayerEntityFeature.VOLUME_STEP
 )
 
 SUPPORT_CXA_WITH_CXN = (
@@ -72,6 +90,7 @@ SUPPORT_CXA_WITH_CXN = (
     | MediaPlayerEntityFeature.TURN_OFF
     | MediaPlayerEntityFeature.TURN_ON
     | MediaPlayerEntityFeature.VOLUME_MUTE
+    | MediaPlayerEntityFeature.VOLUME_SET
     | MediaPlayerEntityFeature.VOLUME_STEP
 )
 
@@ -312,6 +331,10 @@ class CambridgeCXADevice(MediaPlayerEntity):
         self._muted = AMP_REPLY_MUTE_OFF
         self._pwstate = ""
         self._state = STATE_OFF
+        self._firmware_version = None
+        self._protocol_version = None
+        self._volume = None
+        self._max_volume = None
         
         # Set up source lists based on amp type
         if self._amp_type == "CXA61":
@@ -329,6 +352,34 @@ class CambridgeCXADevice(MediaPlayerEntity):
             self._state = STATE_ON
             self._mediasource = await self._command_with_reply(AMP_CMD_GET_CURRENT_SOURCE)
             self._muted = await self._command_with_reply(AMP_CMD_GET_MUTE_STATE)
+            
+            # Get volume information
+            vol_reply = await self._command_with_reply(AMP_CMD_GET_VOLUME)
+            if vol_reply.startswith(AMP_REPLY_VOLUME):
+                try:
+                    self._volume = int(vol_reply.replace(AMP_REPLY_VOLUME, ""))
+                except ValueError:
+                    pass
+            
+            # Get max volume (only need to query occasionally)
+            if self._max_volume is None:
+                max_vol_reply = await self._command_with_reply(AMP_CMD_GET_MAX_VOLUME)
+                if max_vol_reply.startswith(AMP_REPLY_MAX_VOLUME):
+                    try:
+                        self._max_volume = int(max_vol_reply.replace(AMP_REPLY_MAX_VOLUME, ""))
+                    except ValueError:
+                        self._max_volume = 96  # Default max
+            
+            # Get firmware and protocol versions (only need to query occasionally)
+            if self._firmware_version is None:
+                fw_reply = await self._command_with_reply(AMP_CMD_GET_FIRMWARE_VERSION)
+                if fw_reply.startswith(AMP_REPLY_FIRMWARE_VERSION):
+                    self._firmware_version = fw_reply.replace(AMP_REPLY_FIRMWARE_VERSION, "")
+            
+            if self._protocol_version is None:
+                pv_reply = await self._command_with_reply(AMP_CMD_GET_PROTOCOL_VERSION)
+                if pv_reply.startswith(AMP_REPLY_PROTOCOL_VERSION):
+                    self._protocol_version = pv_reply.replace(AMP_REPLY_PROTOCOL_VERSION, "")
         else:
             self._state = STATE_OFF
 
@@ -368,6 +419,13 @@ class CambridgeCXADevice(MediaPlayerEntity):
     def is_volume_muted(self):
         """Return mute state."""
         return AMP_REPLY_MUTE_ON in self._muted
+    
+    @property
+    def volume_level(self):
+        """Return the volume level (0..1)."""
+        if self._volume is not None and self._max_volume:
+            return self._volume / self._max_volume
+        return None
 
     @property
     def name(self):
@@ -405,6 +463,22 @@ class CambridgeCXADevice(MediaPlayerEntity):
         if self._cxn_ip:
             return SUPPORT_CXA_WITH_CXN
         return SUPPORT_CXA
+    
+    @property
+    def extra_state_attributes(self):
+        """Return entity specific state attributes."""
+        attrs = {}
+        if self._firmware_version:
+            attrs["firmware_version"] = self._firmware_version
+        if self._protocol_version:
+            attrs["protocol_version"] = self._protocol_version
+        if self._speakersactive:
+            attrs["speaker_output"] = self._speakersactive
+        if self._volume is not None:
+            attrs["volume"] = self._volume
+        if self._max_volume is not None:
+            attrs["max_volume"] = self._max_volume
+        return attrs
 
     async def async_mute_volume(self, mute):
         """Mute or unmute audio."""
@@ -427,17 +501,44 @@ class CambridgeCXADevice(MediaPlayerEntity):
 
     async def async_turn_off(self):
         """Turn the amplifier off."""
-        await self._command(AMP_CMD_SET_PWR_OFF)
+        await self._command(AMP_CMD_SET_PWR_STANDBY)
 
     async def async_volume_up(self):
         """Increase volume by one step."""
-        self.url_command("smoip/zone/state?pre_amp_mode=false")
-        self.url_command("smoip/zone/volume?zone=1&command=step_up")
+        if self._cxn_ip:
+            # Use CXN for volume control
+            self.url_command("smoip/zone/state?pre_amp_mode=false")
+            self.url_command("smoip/zone/volume?zone=1&command=step_up")
+        else:
+            # Use amplifier protocol
+            await self._command(AMP_CMD_INCREASE_VOLUME)
 
     async def async_volume_down(self):
         """Decrease volume by one step."""
-        self.url_command("smoip/zone/state?pre_amp_mode=false")
-        self.url_command("smoip/zone/volume?zone=1&command=step_down")
+        if self._cxn_ip:
+            # Use CXN for volume control
+            self.url_command("smoip/zone/state?pre_amp_mode=false")
+            self.url_command("smoip/zone/volume?zone=1&command=step_down")
+        else:
+            # Use amplifier protocol
+            await self._command(AMP_CMD_DECREASE_VOLUME)
+    
+    async def async_set_volume_level(self, volume):
+        """Set volume level, range 0..1."""
+        if self._max_volume:
+            # Convert 0..1 to 0..max_volume
+            volume_int = int(volume * self._max_volume)
+            # Format as two-digit string
+            volume_str = f"{volume_int:02d}"
+            await self._command(AMP_CMD_SET_VOLUME + volume_str)
+    
+    async def async_select_next_source(self):
+        """Select next input source."""
+        await self._command(AMP_CMD_SELECT_NEXT_SOURCE)
+    
+    async def async_select_prev_source(self):
+        """Select previous input source."""
+        await self._command(AMP_CMD_SELECT_PREV_SOURCE)
 
     async def async_will_remove_from_hass(self):
         """Clean up when entity is removed."""

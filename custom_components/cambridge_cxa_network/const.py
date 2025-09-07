@@ -21,20 +21,49 @@ CONNECTION_SERIAL = "serial"
 
 AMP_TYPES = ["CXA61", "CXA81"]
 
-# Cambridge Audio Protocol Commands (from existing implementation)
+# Cambridge Audio Protocol Commands per official documentation
+# Group 01 - Amplifier Commands
 AMP_CMD_GET_PWSTATE = "#01,01"
-AMP_CMD_GET_CURRENT_SOURCE = "#03,01"
-AMP_CMD_GET_MUTE_STATE = "#01,03"
-
-AMP_CMD_SET_MUTE_ON = "#01,04,1"
-AMP_CMD_SET_MUTE_OFF = "#01,04,0"
+AMP_CMD_SET_PWR_STANDBY = "#01,02,0"
 AMP_CMD_SET_PWR_ON = "#01,02,1"
-AMP_CMD_SET_PWR_OFF = "#01,02,0"
+AMP_CMD_GET_MUTE_STATE = "#01,03"
+AMP_CMD_SET_MUTE_OFF = "#01,04,0"
+AMP_CMD_SET_MUTE_ON = "#01,04,1"
 
-AMP_REPLY_PWR_ON = "#02,01,1"
+# Group 03 - Source Commands  
+AMP_CMD_GET_CURRENT_SOURCE = "#03,01"
+AMP_CMD_SELECT_NEXT_SOURCE = "#03,02"
+AMP_CMD_SELECT_PREV_SOURCE = "#03,03"
+AMP_CMD_SET_SOURCE = "#03,04,"  # Add source code
+
+# Group 04 - Volume Commands
+AMP_CMD_GET_VOLUME = "#04,01"
+AMP_CMD_INCREASE_VOLUME = "#04,02"
+AMP_CMD_DECREASE_VOLUME = "#04,03"
+AMP_CMD_SET_VOLUME = "#04,04,"  # Add volume level (00-96)
+AMP_CMD_GET_MAX_VOLUME = "#04,05"
+AMP_CMD_SET_MAX_VOLUME = "#04,06,"  # Add max volume (00-96)
+
+# Group 13 - Version Commands
+AMP_CMD_GET_PROTOCOL_VERSION = "#13,01"
+AMP_CMD_GET_FIRMWARE_VERSION = "#13,02"
+
+# Reply codes
 AMP_REPLY_PWR_STANDBY = "#02,01,0"
-AMP_REPLY_MUTE_ON = "#02,03,1"
+AMP_REPLY_PWR_ON = "#02,01,1"
 AMP_REPLY_MUTE_OFF = "#02,03,0"
+AMP_REPLY_MUTE_ON = "#02,03,1"
+AMP_REPLY_SOURCE = "#04,01,"  # Followed by source code
+AMP_REPLY_VOLUME = "#05,01,"  # Followed by volume level (00-96)
+AMP_REPLY_MAX_VOLUME = "#05,05,"  # Followed by max volume (00-96)
+AMP_REPLY_PROTOCOL_VERSION = "#14,01,"
+AMP_REPLY_FIRMWARE_VERSION = "#14,02,"
+
+# Error codes
+ERROR_CMD_GROUP_UNKNOWN = "#00,01"
+ERROR_CMD_NUMBER_UNKNOWN = "#00,02"
+ERROR_CMD_DATA_ERROR = "#00,03"
+ERROR_CMD_NOT_AVAILABLE = "#00,04"
 
 # Input sources for CXA61
 NORMAL_INPUTS_CXA61 = {
