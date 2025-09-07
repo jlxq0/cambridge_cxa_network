@@ -47,10 +47,9 @@ from .const import (
     AMP_CMD_SELECT_NEXT_SOURCE,
     AMP_CMD_SELECT_PREV_SOURCE,
     AMP_CMD_GET_VOLUME,
+    AMP_CMD_SET_VOLUME,
     AMP_CMD_INCREASE_VOLUME,
     AMP_CMD_DECREASE_VOLUME,
-    AMP_CMD_SET_VOLUME,
-    AMP_CMD_GET_MAX_VOLUME,
     AMP_REPLY_PWR_ON,
     AMP_REPLY_PWR_STANDBY,
     AMP_REPLY_MUTE_ON,
@@ -58,7 +57,6 @@ from .const import (
     AMP_REPLY_FIRMWARE_VERSION,
     AMP_REPLY_PROTOCOL_VERSION,
     AMP_REPLY_VOLUME,
-    AMP_REPLY_MAX_VOLUME,
     NORMAL_INPUTS_CXA61,
     NORMAL_INPUTS_CXA81,
     NORMAL_INPUTS_AMP_REPLY_CXA61,
@@ -334,7 +332,7 @@ class CambridgeCXADevice(MediaPlayerEntity):
         self._firmware_version = None
         self._protocol_version = None
         self._volume = None
-        self._max_volume = None
+        self._max_volume = 96  # CXA81 volume range is 0-96
         
         # Set up source lists based on amp type
         if self._amp_type == "CXA61":
@@ -388,17 +386,6 @@ class CambridgeCXADevice(MediaPlayerEntity):
             except Exception:
                 _LOGGER.debug("Failed to get volume")
             
-            # Get max volume (only need to query occasionally)
-            if self._max_volume is None:
-                try:
-                    max_vol_reply = await self._command_with_reply(AMP_CMD_GET_MAX_VOLUME)
-                    if max_vol_reply and max_vol_reply.startswith(AMP_REPLY_MAX_VOLUME):
-                        try:
-                            self._max_volume = int(max_vol_reply.replace(AMP_REPLY_MAX_VOLUME, ""))
-                        except ValueError:
-                            self._max_volume = 96  # Default max
-                except Exception:
-                    self._max_volume = 96  # Default max if query fails
             
             # Get firmware and protocol versions (only need to query occasionally)
             if self._firmware_version is None:
