@@ -8,9 +8,21 @@ This component allows you to control your Cambridge Audio CXA amplifier through 
 - Input source selection
 - Mute control
 - Speaker output selection (A, AB, B)
-- Volume control (when used with Cambridge CXN)
+- Volume control (only when used with Cambridge CXN - see limitations below)
 - **NEW**: Network connection support via USR-W610 WiFi-to-serial converter
 - **NEW**: GUI-based configuration (no more YAML editing!)
+
+## Important: RS232 Protocol Limitations
+
+The official Cambridge Audio RS232 protocol for CXA amplifiers does **NOT** support:
+- Volume control (no commands to set, query, or adjust volume)
+- Volume status queries
+- Bass/Treble control
+- Balance control
+
+These limitations are part of the Cambridge Audio design - the RS232 interface is primarily for basic control and source switching. For full control including volume, you must either:
+1. Configure a Cambridge CXN streamer IP address in the integration settings (CXN provides network control of CXA volume)
+2. Use the physical remote control or front panel controls
 
 ## Installation
 

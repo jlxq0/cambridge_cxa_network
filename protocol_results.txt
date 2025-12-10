@@ -1,0 +1,15 @@
+Cambridge CXA Protocol Test Results
+========================================
+
+Source Mappings:
+  01: A4
+  02: D1
+  03: D2
+  04: D3
+  05: bluetooth (blue)
+  06: bluetooth (red)
+
+Notes:
+Initial source: bluetooth (red)
+Volume control works: n
+Mute works: y

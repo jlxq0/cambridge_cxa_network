@@ -42,17 +42,15 @@ from .const import (
     AMP_CMD_SET_PWR_ON,
     AMP_CMD_SET_PWR_STANDBY,
     AMP_CMD_GET_FIRMWARE_VERSION,
-    AMP_CMD_GET_MODEL,
+    AMP_CMD_GET_MUTE,
     AMP_CMD_SET_SOURCE,
-    AMP_CMD_SET_VOLUME,
     AMP_REPLY_PWR_ON,
     AMP_REPLY_PWR_STANDBY,
     AMP_REPLY_MUTE_ON,
     AMP_REPLY_MUTE_OFF,
     AMP_REPLY_FIRMWARE_VERSION,
-    AMP_REPLY_MODEL,
+    AMP_REPLY_PROTOCOL_VERSION,
     AMP_REPLY_SOURCE,
-    AMP_REPLY_VOLUME_SET,
     NORMAL_INPUTS_CXA61,
     NORMAL_INPUTS_CXA81,
     NORMAL_INPUTS_AMP_REPLY_CXA61,
@@ -74,8 +72,6 @@ SUPPORT_CXA = (
     | MediaPlayerEntityFeature.TURN_OFF
     | MediaPlayerEntityFeature.TURN_ON
     | MediaPlayerEntityFeature.VOLUME_MUTE
-    | MediaPlayerEntityFeature.VOLUME_SET
-    | MediaPlayerEntityFeature.VOLUME_STEP
 )
 
 SUPPORT_CXA_WITH_CXN = (
@@ -327,8 +323,6 @@ class CambridgeCXADevice(MediaPlayerEntity):
         self._state = STATE_OFF
         self._firmware_version = None
         self._model_name = None
-        self._volume = 30  # Default volume since we can't query it
-        self._max_volume = 96  # CXA volume range is 0-96
         self._last_mute_state = None  # Track mute state
         
         # Set up source lists based on amp type
@@ -427,8 +421,7 @@ class CambridgeCXADevice(MediaPlayerEntity):
     @property
     def volume_level(self):
         """Return the volume level (0..1)."""
-        if self._volume is not None and self._max_volume:
-            return self._volume / self._max_volume
+        # Volume control only available via CXN, not via RS232
         return None
 
     @property
@@ -478,10 +471,6 @@ class CambridgeCXADevice(MediaPlayerEntity):
             attrs["model"] = self._model_name
         if self._speakersactive:
             attrs["speaker_output"] = self._speakersactive
-        if self._volume is not None:
-            attrs["volume"] = self._volume
-        if self._max_volume is not None:
-            attrs["max_volume"] = self._max_volume
         return attrs
 
     async def async_mute_volume(self, mute):
@@ -516,10 +505,8 @@ class CambridgeCXADevice(MediaPlayerEntity):
             self.url_command("smoip/zone/state?pre_amp_mode=false")
             self.url_command("smoip/zone/volume?zone=1&command=step_up")
         else:
-            # CXA doesn't have volume up command, simulate with set
-            if self._volume is not None and self._volume < 96:
-                self._volume = min(self._volume + 1, 96)
-                await self.async_set_volume_level(self._volume / 96.0)
+            # CXA does not support volume control via RS232
+            _LOGGER.warning("Volume control not available via RS232")
 
     async def async_volume_down(self):
         """Decrease volume by one step."""
@@ -528,19 +515,18 @@ class CambridgeCXADevice(MediaPlayerEntity):
             self.url_command("smoip/zone/state?pre_amp_mode=false")
             self.url_command("smoip/zone/volume?zone=1&command=step_down")
         else:
-            # CXA doesn't have volume down command, simulate with set
-            if self._volume is not None and self._volume > 0:
-                self._volume = max(self._volume - 1, 0)
-                await self.async_set_volume_level(self._volume / 96.0)
+            # CXA does not support volume control via RS232
+            _LOGGER.warning("Volume control not available via RS232")
     
     async def async_set_volume_level(self, volume):
         """Set volume level, range 0..1."""
-        # Convert 0..1 to 0..96
-        volume_int = int(volume * 96)
-        self._volume = volume_int
-        # Format as two-digit string
-        volume_str = f"{volume_int:02d}"
-        await self._command(AMP_CMD_SET_VOLUME + volume_str)
+        if self._cxn_ip:
+            # Use CXN for volume control
+            volume_int = int(volume * 100)
+            self.url_command(f"smoip/zone/volume?zone=1&level={volume_int}")
+        else:
+            # CXA does not support volume control via RS232
+            _LOGGER.warning("Volume control not available via RS232")
     
     async def async_select_next_source(self):
         """Select next input source."""

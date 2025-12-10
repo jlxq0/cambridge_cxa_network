@@ -37,7 +37,15 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Cambridge CXA number entities."""
-    # Volume control now works with amplifier protocol, no CXN required
+    # Volume control only available if CXN is configured
+    # RS232 protocol does not support volume control
+    
+    from .const import CONF_CXN_IP
+    
+    # Only add volume control if CXN is configured
+    if not entry.data.get(CONF_CXN_IP):
+        _LOGGER.info("No CXN IP configured, volume control not available via RS232")
+        return
     
     entities = []
     

@@ -43,20 +43,6 @@ SENSOR_DESCRIPTIONS = [
         icon="mdi:speaker-multiple",
     ),
     SensorEntityDescription(
-        key="volume",
-        name="Volume",
-        icon="mdi:volume-high",
-        native_unit_of_measurement=None,
-        state_class=SensorStateClass.MEASUREMENT,
-    ),
-    SensorEntityDescription(
-        key="max_volume",
-        name="Max Volume",
-        icon="mdi:volume-source",
-        native_unit_of_measurement=None,
-        state_class=SensorStateClass.MEASUREMENT,
-    ),
-    SensorEntityDescription(
         key="connection_status",
         name="Connection Status",
         icon="mdi:connection",
@@ -159,10 +145,6 @@ class CambridgeCXASensor(SensorEntity):
             self._attr_native_value = media_player.attributes.get("sound_mode", "Unknown")
         elif self.entity_description.key == "connection_status":
             self._attr_native_value = "Connected" if media_player.state != "unavailable" else "Disconnected"
-        elif self.entity_description.key == "volume":
-            self._attr_native_value = media_player.attributes.get("volume", 0)
-        elif self.entity_description.key == "max_volume":
-            self._attr_native_value = media_player.attributes.get("max_volume", 96)
         elif self.entity_description.key == "firmware_version":
             self._attr_native_value = media_player.attributes.get("firmware_version", "Unknown")
         elif self.entity_description.key == "protocol_version":
